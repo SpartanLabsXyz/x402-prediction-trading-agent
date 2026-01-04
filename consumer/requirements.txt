@@ -1,0 +1,11 @@
+# x402 Python SDK
+x402-python>=1.0.0
+
+# HTTP client with async support
+httpx>=0.25.0
+
+# Ethereum wallet operations
+eth-account>=0.10.0
+
+# Encryption for wallet keys at rest
+cryptography>=41.0.0
