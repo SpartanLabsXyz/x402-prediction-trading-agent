@@ -31,7 +31,7 @@ from eth_account import Account
 # CONFIGURATION
 # ==========================================
 
-# Tool discovery endpoint (Riley's API - aggregates x402 tools)
+# Tool discovery endpoint (x402 Manager - aggregates x402 tools)
 DISCOVERY_URL = "https://x402-manager-backend.vercel.app/api/discovery"
 DISCOVERY_CACHE_TTL = 3600  # 1 hour
 

@@ -29,7 +29,7 @@ This implementation has two sides:
         │                        ▼
         │               ┌──────────────────┐
         └──────────────▶│  Tool Discovery  │
-                        │  (Riley's API)   │
+                        │  (x402 Manager)  │
                         └──────────────────┘
 ```
 
@@ -93,13 +93,13 @@ class BaseOnlyTransport(httpx.AsyncHTTPTransport):
 
 ### 3. Tool Discovery (`simmer_v3/agentic_tools.py`)
 
-Discovers available x402 tools dynamically:
+Discovers available x402 tools from [x402 Manager](https://x402-manager-backend.vercel.app):
 
 ```python
 DISCOVERY_URL = "https://x402-manager-backend.vercel.app/api/discovery"
 
 async def discover_tools() -> List[Tool]:
-    """Fetch available x402 tools from discovery API."""
+    """Fetch available x402 tools from x402 Manager."""
     async with httpx.AsyncClient() as client:
         resp = await client.get(DISCOVERY_URL)
         tools = resp.json()
