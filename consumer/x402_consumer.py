@@ -31,8 +31,9 @@ from eth_account import Account
 # CONFIGURATION
 # ==========================================
 
-# Tool discovery endpoint (x402 Manager - aggregates x402 tools)
-DISCOVERY_URL = "https://x402-manager-backend.vercel.app/api/discovery"
+# Tool discovery endpoint (ZAUTHX402 - live registry of verified x402 endpoints)
+# See: https://zauthx402.com for the endpoint database explorer
+DISCOVERY_URL = "https://back.zauthx402.com/api/x402/endpoints"
 DISCOVERY_CACHE_TTL = 3600  # 1 hour
 
 # Tool categories useful for trading agents
@@ -212,7 +213,7 @@ class ToolCatalog:
     _cache_time: Optional[datetime] = None
 
     async def get_tools(self, force_refresh: bool = False) -> List[Tool]:
-        """Fetch tools from discovery API with caching."""
+        """Fetch tools from ZAUTHX402 discovery API with caching."""
         now = datetime.now(timezone.utc)
 
         # Check cache
@@ -221,14 +222,21 @@ class ToolCatalog:
             if age < DISCOVERY_CACHE_TTL:
                 return self._cache
 
-        # Fetch from discovery API
+        # Fetch from ZAUTHX402 API (only WORKING endpoints on Base)
         tools = []
         try:
+            params = {
+                "status": "WORKING",
+                "network": "base",
+                "limit": 100,
+                "offset": 0
+            }
             async with httpx.AsyncClient(timeout=15) as client:
-                resp = await client.get(DISCOVERY_URL, params={"limit": 100, "offset": 0})
+                resp = await client.get(DISCOVERY_URL, params=params)
                 data = resp.json()
 
-                for item in data.get("items", []):
+                # ZAUTHX402 uses "endpoints" instead of "items"
+                for item in data.get("endpoints", []):
                     tool = self._parse_tool(item)
                     if tool:
                         tools.append(tool)
@@ -255,40 +263,75 @@ class ToolCatalog:
         return tools
 
     def _parse_tool(self, item: dict) -> Optional[Tool]:
-        """Parse a tool from discovery API response."""
+        """Parse a tool from ZAUTHX402 discovery API response."""
         try:
-            # Extract price (in USDC with 6 decimals)
-            price_raw = item.get("price", "0")
-            if isinstance(price_raw, str):
-                price_raw = int(price_raw)
-            price_usd = price_raw / 1_000_000  # USDC has 6 decimals
+            # Extract price - ZAUTHX402 uses lastPriceUsdc as string (e.g., "0.001")
+            price_str = item.get("lastPriceUsdc", "0")
+            try:
+                price_usd = float(price_str)
+            except (ValueError, TypeError):
+                price_usd = 0.0
 
-            # Extract parameters
+            # ZAUTHX402 doesn't include parameter schemas in the response.
+            # For tools that need specific parameters, you can:
+            # 1. Check the raw402Header for hints
+            # 2. Maintain your own parameter registry
+            # 3. Inspect lastRequest to see what parameters were used
             params = {}
-            if "parameters" in item:
-                for p in item["parameters"]:
-                    params[p["name"]] = {
-                        "type": p.get("type", "string"),
-                        "description": p.get("description", ""),
-                        "required": p.get("required", False),
-                    }
-                    if "enum" in p:
-                        params[p["name"]]["enum"] = p["enum"]
+
+            # Try to infer parameters from lastRequest if available
+            last_request = item.get("lastRequest", {})
+            if isinstance(last_request, dict):
+                body = last_request.get("body", {})
+                if isinstance(body, dict):
+                    for key in body.keys():
+                        params[key] = {
+                            "type": "string",
+                            "description": f"Parameter: {key}",
+                            "required": True,
+                        }
+
+            # Categorize by URL/description keywords
+            category = self._categorize_tool(
+                item.get("url", ""),
+                item.get("description", "")
+            )
 
             return Tool(
-                id=item.get("id", item.get("name", "unknown")),
-                name=item.get("name", "Unknown"),
+                id=item.get("id", "unknown"),
+                name=item.get("title", item.get("url", "Unknown").split("/")[-1]),
                 description=item.get("description", ""),
                 url=item.get("url", ""),
                 method=item.get("method", "GET"),
                 price_usd=price_usd,
                 network=item.get("network", "base"),
                 parameters=params,
-                category=item.get("category", "other"),
+                category=category,
             )
         except Exception as e:
             print(f"[ToolCatalog] Failed to parse tool: {e}")
             return None
+
+    def _categorize_tool(self, url: str, description: str) -> str:
+        """Categorize tool by URL and description keywords."""
+        text = f"{url} {description}".lower()
+
+        if any(x in text for x in ["search", "firecrawl", "extract", "fetch", "url"]):
+            return "search"
+        if any(x in text for x in ["twitter", "x/twitter", "x_searcher", "social"]):
+            return "social"
+        if any(x in text for x in ["news", "headline", "articles"]):
+            return "news"
+        if any(x in text for x in ["polymarket", "prediction", "market", "kalshi"]):
+            return "market"
+        if any(x in text for x in ["research", "knowledge", "ask"]):
+            return "research"
+        if any(x in text for x in ["weather", "forecast"]):
+            return "weather"
+        if any(x in text for x in ["crypto", "token", "defi", "blockchain"]):
+            return "crypto"
+
+        return "other"
 
 
 # ==========================================

@@ -29,7 +29,7 @@ This implementation has two sides:
         │                        ▼
         │               ┌──────────────────┐
         └──────────────▶│  Tool Discovery  │
-                        │  (x402 Manager)  │
+                        │  (ZAUTHX402)     │
                         └──────────────────┘
 ```
 
@@ -91,26 +91,32 @@ class BaseOnlyTransport(httpx.AsyncHTTPTransport):
         return response
 ```
 
-### 3. Tool Discovery (`simmer_v3/agentic_tools.py`)
+### 3. Tool Discovery (`consumer/x402_consumer.py`)
 
-Discovers available x402 tools from [x402 Manager](https://x402-manager-backend.vercel.app):
+Discovers available x402 tools from [ZAUTHX402](https://zauthx402.com) - a live registry of verified x402 endpoints:
 
 ```python
-DISCOVERY_URL = "https://x402-manager-backend.vercel.app/api/discovery"
+DISCOVERY_URL = "https://back.zauthx402.com/api/x402/endpoints"
 
 async def discover_tools() -> List[Tool]:
-    """Fetch available x402 tools from x402 Manager."""
+    """Fetch available x402 tools from ZAUTHX402."""
+    params = {
+        "status": "WORKING",  # Only verified working endpoints
+        "network": "base",     # Base mainnet only
+        "limit": 100
+    }
     async with httpx.AsyncClient() as client:
-        resp = await client.get(DISCOVERY_URL)
-        tools = resp.json()
+        resp = await client.get(DISCOVERY_URL, params=params)
+        data = resp.json()
 
     return [Tool(
         id=t['id'],
-        name=t['name'],
+        name=t['title'],
         url=t['url'],
-        price_usd=float(t['price']) / 1e6,  # USDC decimals
-        parameters=t['parameters']
-    ) for t in tools]
+        price_usd=float(t['lastPriceUsdc']),  # Already in USD
+        method=t['method'],
+        network=t['network']
+    ) for t in data['endpoints']]
 ```
 
 ### 4. x402 Provider (`website/x402-provider/`)
@@ -222,6 +228,7 @@ OPENROUTER_API_KEY=<key>
 - **Live app**: https://simmer.markets
 - **x402 Protocol**: https://www.x402.org/
 - **x402 SDK**: https://github.com/coinbase/x402
+- **ZAUTHX402 Registry**: https://zauthx402.com (tool discovery database)
 
 ## License
 
